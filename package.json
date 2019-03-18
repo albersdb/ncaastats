@@ -1,0 +1,11 @@
+{ 
+  "url" : "https://github.com/albersdb/ncaastats",
+  "version": "0.0.1",
+  "main": "ncaastats.js",
+  "email" : "albersdb@yahoo.com",
+  "dependencies" :
+  { 
+    "express" : "^4.13.4",
+    "cheerio" : "^0.20.0"
+  }
+}
