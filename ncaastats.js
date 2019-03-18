@@ -7,7 +7,7 @@ var ncaastats = new function() {
 	var app = express();
 	
 	var args = process.argv.slice(2);
-	ns.myArgs = {protocol:'http',host:'stats.ncaa.org'};
+	ns.myArgs = {protocol:'http',host:'stats.ncaa.org'};//,proxyname:'proxynap.grpitsrv.com'};
 
 	for (var a=0;a<args.length;a++){
 		var argParts = args[a].split(/[:=]/);
@@ -17,6 +17,10 @@ var ncaastats = new function() {
 			ns.myArgs[argParts[0].trim()] = argParts[1].trim();
 		}
 	}
+	
+	app.get('/help', function(req,res){
+		res.end("help!");
+	});
 
 	app.get('/games/:teamid/:seasonid', function(req,res){
 		res.setHeader('Content-Type', 'application/json');
@@ -34,11 +38,10 @@ var ncaastats = new function() {
 					var Games = [];
 					$('table.mytable td a[href^="/game/index"]').each(function(i,e){
 						var url = $(e).attr('href').split('?')[0];
-						var gameid = parseInt(url.split('/')[3],10);
-						Games.push(gameid);
+						var game = {'Game URL':url};
+						Games.push(game);
 					});
-					var results = {'GameIDs':Games};
-					res.end(JSON.stringify(results));
+					res.end(JSON.stringify(Games));
 				});
 				teamres.on('error', function(e){
 					res.end('error: ' + e.message);
@@ -89,7 +92,7 @@ var ncaastats = new function() {
 		var options = ns.getOptions({path:path,args:ns.myArgs});
 
 		var body = '';
-		var teams = {'Sport':sport,'Division':parseInt(division,10),'Year':parseInt(year,10)};
+		var teams = {'Sport':sport,'Division':division,'Year':year};
 		var ncaareq = http.get(options, function(ncaares){
 			if (ncaares.statusCode == 200){
 				ncaares.on('data', function(chunk){
@@ -98,10 +101,10 @@ var ncaastats = new function() {
 				ncaares.on('end', function(){
 					var $ = cheerio.load(body);
 					var seasonid = $('td a').first().attr('href').split('/')[3];
-					teams.SeasonID = parseInt(seasonid,10);
+					teams.SeasonID = seasonid;
 					teams.Conferences = [];
 					$('li a[href*=changeConference]').each(function(i,e){
-						var conf = {'ConferenceID':parseInt($(e).attr('href').replace(/^[^0-9]*\(([0-9]+)\.0\);$/,'$1'),10),'ConferenceName':$(e).text(),'Teams':[]};
+						var conf = {'ConferenceID':$(e).attr('href').replace(/^[^0-9]*\(([0-9]+)(\.0)?\);$/,'$1'),'ConferenceName':$(e).text(),'Teams':[]};
 						if (conf.ConferenceID > 0){
 							teams.Conferences.push(conf);
 						}
@@ -144,7 +147,7 @@ var ncaastats = new function() {
 						$('td a').each(function(i,e){
 							var teamLinkPieces = $(e).attr('href').split('/');
 							var teamid = teamLinkPieces[2];
-							var team = {'TeamID':parseInt(teamid,10),TeamName:$(e).text().trim()};
+							var team = {TeamID:teamid,TeamName:$(e).text().trim()};
 							teams.Conferences[conf.sequence].Teams.push(team);
 						});
 						if (remaining.length > 0){
@@ -232,29 +235,17 @@ var ncaastats = new function() {
 	ns.GetGameDataAsObject = function(gameid, $){
 		var statTables = $('table.mytable:has(tr.heading)');
 		var teams = ['Away','Home'];
-		var tagTable = $('table.mytable').first().next('table');
-		var detailsTable = tagTable.next('table');
-		var officialsTable = detailsTable.next('table');
-		var details = Object.assign.apply({},detailsTable.find('tr').map(function(){
-			var det = {};
-			det[$(this).find('td').first().text().replace(':','')]=$(this).find('td').eq(1).text();
-			return det;
-		}));
-		details.GameTag = tagTable.find('td:nth-child(1)').map(function(){
-			return $(this).text();
-		}).get().join();
-		details.Officials = officialsTable.find('tr').first().find('td').eq(1).text().trim().split(/,[ ]?/);
-		var teamData = {GameID:parseInt(gameid,10),SeasonID:null,Details:details};
+		var teamData = {GameID:gameid,SeasonID:null};
 		var statNames = [];
 		var teamLinks = $('table.mytable:not(:has(tr.heading)) tr').slice(1);
 		teamLinks.each(function(i,e){
 			var teamLink = $(e).find('a');
 			if (teamLink.length > 0){
 				var ids = teamLink.attr('href').split('/');
-				teamData['SeasonID'] = parseInt(ids[3],10);
-				teamData[teams[i]] = {'TeamID':parseInt(ids[2],10),'TeamName':teamLink.text().trim(),'Stats':[]};
+				teamData['SeasonID'] = ids[3];
+				teamData[teams[i]] = {'TeamID':ids[2],'TeamName':teamLink.text().trim(),'Stats':[]};
 			} else {
-				teamData[teams[i]] = {'TeamID':null,'TeamName':$(e).find('td').first().text().trim(),'Stats':[]};
+				teamData[teams[i]] = {'TeamID':'','TeamName':$(e).find('td').first().text().trim(),'Stats':[]};
 			}
 		});
 
@@ -271,12 +262,11 @@ var ncaastats = new function() {
 					var playerTD = $(row).find('td').first();
 					var playerLink = playerTD.find('a').attr('href');
 					playerLink = (playerLink == undefined ? '' : playerLink);
-					var playerData = {'PlayerID':parseInt(playerLink.replace(/^.*[=](.*)$/,'$1'),10),'PlayerName':playerTD.text().trim()};
+					var playerData = {'PlayerID':playerLink.replace(/^.*[=](.*)$/,'$1'),'PlayerName':playerTD.text().trim()};
 
 					$(row).find('td').each(function(j,val){
-						if (j > 0 && statNames[j-1].toUpperCase() != 'POS'){
-							var stat = parseInt($(val).text().trim().replace('/','').replace(':00',''), 10);
-							playerData[statNames[j-1]] = (isNaN(stat) ? 0 : stat);
+						if (j > 0){
+							playerData[statNames[j-1]] = $(val).text().trim().replace('/','').replace(':00','');
 						}
 					});
 					teamData[teams[i]].Stats.push(playerData);
